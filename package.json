@@ -1,0 +1,29 @@
+{
+  "name": "azure-sql-agent",
+  "version": "0.0.2",
+  "description": "Command line agent to register rules in the Azure SQL firewall for the device the agent is running on.",
+  "main": "bin/azure-sql-agent.js",
+  "license": "Apache-2.0",
+  "author": "Pascal",
+  "homepage": "https://github.com/pascalgn/azure-sql-agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pascalgn/azure-sql-agent.git"
+  },
+  "bin": {
+    "azure-sql-agent": "bin/azure-sql-agent.js"
+  },
+  "dependencies": {
+    "child-process-promise": "^2.2.1",
+    "fs-extra": "^4.0.2",
+    "ip": "^1.1.5",
+    "promise": "^8.0.1",
+    "public-ip": "^2.3.5"
+  },
+  "scripts": {
+    "lint": "node_modules/eslint/bin/eslint.js ."
+  },
+  "devDependencies": {
+    "eslint": "^4.4.1"
+  }
+}
