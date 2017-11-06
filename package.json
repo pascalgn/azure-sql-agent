@@ -1,6 +1,6 @@
 {
   "name": "azure-sql-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command line agent to register rules in the Azure SQL firewall for the device the agent is running on.",
   "license": "MIT",
   "author": "Pascal",

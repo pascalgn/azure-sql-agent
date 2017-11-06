@@ -2,7 +2,7 @@
 
 Command line agent to automatically add your current public IP address to the Azure SQL firewall.
 
-![Screenshot](https://raw.githubusercontent.com/pascalgn/azure-sql-agent/master/doc/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/pascalgn/azure-sql-agent/master/screenshot.png)
 
 ## Installation
 
@@ -51,9 +51,12 @@ After the configuration is complete, run the agent:
     $ ./node_modules/azure-sql-agent/lib/azure-sql-agent.js
     Agent is running now: 70295
 
+To start the agent in the foreground, use `-f`.
+A full list of options is displayed when using `--help`.
+
 ### Reloading
 
-The agent automatically checks for changes in your internal IP address every one second, assuming
+The agent automatically checks for changes in your internal IP address every second, assuming
 that a new local IP address has been assigned due to switching the WiFi network, for example. This triggers
 a check if your *public* IP has also changed.
 
