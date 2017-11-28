@@ -13,13 +13,18 @@ const defaultGateway = require('default-gateway');
 const internalIp = require('internal-ip');
 const publicIp = require('public-ip');
 const notifier = require('node-notifier');
+const winston = require('winston');
+
+require('pkginfo')(module);
 
 const internalCheckWait = 1000;
 const publicCheckWait = 5 * 60 * 1000;
+const errorSleep = 3000;
 
 const defaultConfig = {
     'prefix': 'my-prefix',
     'notifications': false,
+    'errorNotifications': true,
     'servers': [
         {
             'subscription': 'hex-subscription-id',
@@ -33,13 +38,26 @@ const home = `${os.homedir()}/.azure-sql-agent`;
 const configFile = `${home}/config.json`;
 const pidFile = `${home}/agent.pid`;
 
+const logger = new winston.Logger({
+    level: 'info',
+    transports: [
+        new winston.transports.File({
+            filename: `${home}/agent.log`,
+            json: false,
+            maxsize: 100 * 1024,
+            maxFiles: 3,
+            tailable: true
+        })
+    ]
+});
+
 function readConfig() {
     return fs.readJson(configFile)
         .catch(err => {
             if (err.code === 'ENOENT') {
                 return fs.ensureDir(home)
                     .then(() => fs.writeJson(configFile, defaultConfig, { 'spaces': 2 }))
-                    .then(() => console.log(`Default configuration written: ${configFile}`))
+                    .then(() => logger.info(`Default configuration written: ${configFile}`))
                     .then(() => defaultConfig);
             } else {
                 throw err;
@@ -47,14 +65,24 @@ function readConfig() {
         });
 }
 
-function az(args) {
+function az(args, retries = 2) {
     return Promise.resolve()
-        .then(() => console.log(` -> az ${args.slice(0, args.findIndex(arg => arg.startsWith('-'))).join(' ')}`))
+        .then(() => logger.debug(` -> az ${args.slice(0, args.findIndex(arg => arg.startsWith('-'))).join(' ')}`))
         .then(() => spawn('az', args, { 'capture': ['stdout', 'stderr'] }))
         .then(result => (result.stdout ? JSON.parse(result.stdout) : {}))
         .catch(err => {
-            throw new Error(err.stderr || err);
+            if (retries > 0) {
+                logger.debug(`command failed, retrying: az ${args.join(' ')}: ${err.stderr}`);
+                return sleep(errorSleep).then(() => az(args, retries - 1));
+            } else {
+                throw new Error(err.stderr || err);
+            }
         });
+}
+
+function sleep(ms) {
+    logger.debug(`sleeping for ${ms}ms...`);
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function setFirewallRules(ipAddress) {
@@ -90,6 +118,7 @@ function setFirewallRule(config, server, ipAddress, result) {
             const removeRules = forEachPromise(oldRules, rule => az(['sql', 'server', 'firewall-rule', 'delete',
                 '-g', server.resourceGroup, '-s', server.name, '-n', rule.name]));
             if (exists) {
+                logger.debug('Entry already exists in firewall!');
                 return removeRules;
             } else {
                 const ruleName = `${prefix}${ip.toLong(ipAddress)}`;
@@ -106,14 +135,31 @@ function setFirewallRule(config, server, ipAddress, result) {
                     });
             }
         })
-        .then(() => console.log(`Server configured: ${server.name}`));
+        .then(() => logger.info(`Server configured: ${server.name}`))
+        .catch(err => {
+            maybeShowErrorNotification(config);
+            throw err;
+        });
 }
 
 function maybeShowNotification(config, result, ipAddress) {
-    if (config.notifications && result.rulesCreated) {
+    if (config.notifications) {
+        if (result.rulesCreated) {
+            notifier.notify({
+                title: 'Azure SQL Agent',
+                message: `Firewall rules have been successfully updated for your public IP address ${ipAddress}`
+            });
+        } else {
+            logger.debug('Not showing notification as no new rules were created');
+        }
+    }
+}
+
+function maybeShowErrorNotification(config) {
+    if (config.errorNotifications !== false) {
         notifier.notify({
             title: 'Azure SQL Agent',
-            message: `Firewall rules have been successfully updated for your public IP address ${ipAddress}`
+            message: `An error occured! Please see ~/.azure-sql-agent/agent.log for more details.`
         });
     }
 }
@@ -149,6 +195,7 @@ function internalIpChanged(ctx) {
 function publicIpChanged(ctx) {
     return publicIp.v4()
         .then(ipAddress => {
+            logger.debug(`Public IP: ${ipAddress}`);
             if (ctx.publicIp !== ipAddress) {
                 ctx.publicIp = ipAddress;
                 return true;
@@ -192,17 +239,21 @@ function main() {
         console.log('  -d, --debug       show additional debugging output');
         console.log('  --version         show the version number and exit');
     } else if (version) {
-        console.log('version 0.1.1');
+        console.log(`version ${module.exports.version}`);
     } else {
+        if (options.debug) {
+            logger.level = 'debug';
+        }
         if (options.foreground) {
-            return runAgent(options);
+            logger.add(winston.transports.Console);
+            return runAgent();
         } else {
             const pid = fork();
             if (pid) {
                 console.log(`Agent is running now: ${pid}`);
                 return writePid(pid);
             } else {
-                return runAgent(options);
+                return runAgent();
             }
         }
     }
@@ -230,31 +281,29 @@ function writePid(pid) {
         .then(() => fs.writeFile(pidFile, `${pid}`));
 }
 
-function runAgent(options) {
+function runAgent() {
     const ctx = {
         'nextPublicCheck': Date.now() + publicCheckWait
     };
     return Promise.resolve()
         // make sure config file exists:
         .then(() => readConfig())
-        .then(() => watchConfigFile(ctx, options))
-        .then(() => mainLoop(ctx, options))
+        .then(() => watchConfigFile(ctx))
+        .then(() => mainLoop(ctx))
         .catch(err => {
-            console.error(err);
+            logger.error(err);
             process.exit(1);
         });
 }
 
-function watchConfigFile(ctx, options) {
+function watchConfigFile(ctx) {
     new Notify([configFile]).on('change', () => {
-        if (options.debug) {
-            console.log('Config file change detected!');
-        }
+        logger.debug('Config file change detected!');
         ctx.forceSetRules = true;
     });
 }
 
-function mainLoop(ctx, options) {
+function mainLoop(ctx) {
     return Promise.resolve()
         .then(() => {
             if (ctx.forceSetRules) {
@@ -263,9 +312,7 @@ function mainLoop(ctx, options) {
                     return true;
                 } else {
                     // if this fails, we'll try again in the next loop
-                    if (options.debug) {
-                        console.log('Full reload requested, but no public IP available!');
-                    }
+                    logger.debug('Full reload requested, but no public IP available!');
                     return publicIpChanged(ctx);
                 }
             } else {
@@ -273,11 +320,10 @@ function mainLoop(ctx, options) {
                     .then(intChange => {
                         let checkPublic = false;
                         if (intChange) {
-                            if (options.debug) {
-                                console.log('Internal IP changed!');
-                            }
+                            logger.debug('Internal IP changed!');
                             checkPublic = true;
                         } else if (!ctx.nextPublicCheck || Date.now() > ctx.nextPublicCheck) {
+                            logger.debug('Public IP check timer triggered!');
                             checkPublic = true;
                         }
                         if (checkPublic) {
@@ -291,9 +337,7 @@ function mainLoop(ctx, options) {
         })
         .then(setRules => {
             if (setRules) {
-                if (options.debug) {
-                    console.log('Setting firewall rules...');
-                }
+                logger.debug('Setting firewall rules...');
                 const ipAddress = ctx.publicIp;
                 if (ipAddress) {
                     return setFirewallRules(ipAddress);
@@ -301,7 +345,7 @@ function mainLoop(ctx, options) {
             }
         })
         .then(() => new Promise(resolve => setTimeout(resolve, internalCheckWait)))
-        .then(() => mainLoop(ctx, options));
+        .then(() => mainLoop(ctx));
 }
 
 main();

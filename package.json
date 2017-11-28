@@ -1,6 +1,6 @@
 {
   "name": "azure-sql-agent",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Command line agent to register rules in the Azure SQL firewall for the device the agent is running on.",
   "license": "MIT",
   "author": "Pascal",
@@ -9,9 +9,8 @@
     "type": "git",
     "url": "https://github.com/pascalgn/azure-sql-agent.git"
   },
-  "main": "lib/azure-sql-agent",
   "bin": {
-    "azure-sql-agent": "lib/azure-sql-agent.js"
+    "azure-sql-agent": "./bin/azure-sql-agent.js"
   },
   "dependencies": {
     "child-process-promise": "^2.2.1",
@@ -21,11 +20,13 @@
     "internal-ip": "^3.0.1",
     "ip": "^1.1.5",
     "node-notifier": "^5.1.2",
+    "pkginfo": "^0.4.1",
     "promise": "^8.0.1",
-    "public-ip": "^2.3.5"
+    "public-ip": "^2.3.5",
+    "winston": "^2.4.0"
   },
   "scripts": {
-    "lint": "node_modules/eslint/bin/eslint.js ."
+    "lint": "eslint ."
   },
   "devDependencies": {
     "eslint": "^4.10.0"

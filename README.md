@@ -22,6 +22,7 @@ The configuration file is expected to be in `~/.azure-sql-agent/config.json`:
     {
         'prefix': 'my-prefix',
         'notifications': false,
+        'errorNotifications': true,
         'servers': [
             {
                 'subscription': 'hex-subscription-id',
@@ -38,9 +39,13 @@ expected to be old rules that have been created by earlier runs.
 Set **notifications** to `true` if you would like to have a small window pop up
 whenever the firewall rules have been updated.
 
+Set **errorNotifications** to `false` if you do not want to be informed when the agent
+crashes. Errors usually occur when the Azure API takes too long to respond.
+
 The **subscription** is the full identifier of your Azure subscription.
 You can see the currently active subscription in the `id` field when issueing `az account show`.
-**resourceGroup** and **name** identify the specific SQL server.
+
+The options **resourceGroup** and **name** identify the specific SQL server.
 
 ## Usage
 
